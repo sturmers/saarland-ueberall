@@ -180,10 +180,14 @@ export default function ScanPage() {
       setSubmitting(false);
       return;
     }
+    const newEntry = await res.json();
     localStorage.setItem(`submitted_${token}`, String(Date.now()));
     setAlreadySubmitted(true);
     setSubmitted(true);
-    await loadCard();
+    // Optimistically add the new entry to local state immediately
+    if (newEntry.entry && data) {
+      setData(prev => prev ? { ...prev, entries: [...prev.entries, newEntry.entry] } : prev);
+    }
     setSubmitting(false);
   }
 

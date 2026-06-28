@@ -19,11 +19,13 @@ export default function ScanPage() {
   const [data, setData] = useState<CardData | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [canSubmit, setCanSubmit] = useState(true);
+  const [alreadySubmitted, setAlreadySubmitted] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const [name, setName] = useState("");
   const [homeLocation, setHomeLocation] = useState("");
   const [foundLocation, setFoundLocation] = useState("");
+  const [comment, setComment] = useState("");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
@@ -38,20 +40,10 @@ export default function ScanPage() {
 
   useEffect(() => {
     loadCard();
-    // Dieses Gerät hat bereits eingetragen wenn localStorage-Eintrag vorhanden
+    // Permanent one-time lock per card per person – never resets
     const lock = localStorage.getItem(`submitted_${token}`);
     if (lock) {
-      // Prüfen ob inzwischen jemand anderes eingetragen hat (dann darf man wieder)
-      fetch(`/api/scan/${token}`)
-        .then(r => r.json())
-        .then(json => {
-          const entries = json.entries ?? [];
-          const lockTime = Number(lock);
-          const newerEntry = entries.find(
-            (e: { created_at: string }) => new Date(e.created_at).getTime() > lockTime
-          );
-          setCanSubmit(!!newerEntry);
-        });
+      setAlreadySubmitted(true);
     }
   }, [token]);
 
@@ -59,21 +51,9 @@ export default function ScanPage() {
     if (!navigator.geolocation) return;
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setLat(latitude);
-        setLng(longitude);
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=de`,
-            { headers: { "User-Agent": "saarlaender-weltweit/1.0" } }
-          );
-          const json = await res.json();
-          const addr = json.address;
-          const city = addr.city || addr.town || addr.village || addr.county || addr.state || "";
-          const country = addr.country || "";
-          if (city || country) setFoundLocation([city, country].filter(Boolean).join(", "));
-        } catch { /* manuell eintragen */ }
+      (pos) => {
+        setLat(pos.coords.latitude);
+        setLng(pos.coords.longitude);
         setGpsLoading(false);
       },
       () => setGpsLoading(false)
@@ -84,19 +64,20 @@ export default function ScanPage() {
     e.preventDefault();
     setError("");
     if (!name.trim() || !homeLocation.trim() || !foundLocation.trim()) {
-      setError("Bitte alle Felder ausfüllen.");
+      setError("Bitte alle Pflichtfelder ausfüllen.");
       return;
     }
     setSubmitting(true);
     const res = await fetch(`/api/scan/${token}/entry`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, home_location: homeLocation, location_name: foundLocation, lat, lng }),
+      body: JSON.stringify({ name, home_location: homeLocation, location_name: foundLocation, comment, lat, lng }),
     });
     if (!res.ok) {
       const j = await res.json();
       if (j.error === "already_submitted") {
-        setCanSubmit(false);
+        localStorage.setItem(`submitted_${token}`, String(Date.now()));
+        setAlreadySubmitted(true);
       } else {
         setError(j.error ?? "Fehler beim Speichern.");
       }
@@ -104,10 +85,18 @@ export default function ScanPage() {
       return;
     }
     localStorage.setItem(`submitted_${token}`, String(Date.now()));
-    setCanSubmit(false);
+    setAlreadySubmitted(true);
     setSubmitted(true);
     await loadCard();
     setSubmitting(false);
+  }
+
+  async function copyLink() {
+    if (!data) return;
+    const url = `${window.location.origin}/karte/${data.card.id}`;
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   if (notFound) return (
@@ -124,6 +113,8 @@ export default function ScanPage() {
       <p style={{ color: "var(--text-muted)" }}>Lädt…</p>
     </div>
   );
+
+  const trackingUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/karte/${data.card.id}`;
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--cream)" }}>
@@ -186,6 +177,9 @@ export default function ScanPage() {
                   <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                     aus {entry.home_location} · gefunden in {entry.location_name}
                   </p>
+                  {entry.comment && (
+                    <p className="text-xs mt-1 italic" style={{ color: "var(--text-muted)" }}>„{entry.comment}"</p>
+                  )}
                   <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                     {new Date(entry.created_at).toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" })}
                   </p>
@@ -195,32 +189,41 @@ export default function ScanPage() {
           )}
         </section>
 
-        {/* Formular */}
-        {!canSubmit ? (
-          <div className="rounded-2xl p-6 text-center border" style={{ background: "#fff", borderColor: "var(--border)" }}>
+        {/* Status-Box oder Formular */}
+        {alreadySubmitted ? (
+          <div className="rounded-2xl p-6 border" style={{ background: "#fff", borderColor: "var(--border)" }}>
             <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "var(--accent-light)" }}>
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                 <path d="M4 10l4 4 8-8" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
-            <p className="font-semibold mb-1" style={{ color: "var(--text)" }}>Du hast dich bereits eingetragen.</p>
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-              Du hast dich schon eingetragen. Gib die Karte weiter – sobald jemand anderes sie gefunden hat, kannst du dich erneut eintragen.
+            {submitted ? (
+              <p className="font-semibold text-center mb-1" style={{ color: "var(--text)" }}>Eintrag gespeichert!</p>
+            ) : (
+              <p className="font-semibold text-center mb-1" style={{ color: "var(--text)" }}>Du hast dich bereits eingetragen.</p>
+            )}
+            <p className="text-sm text-center mb-4" style={{ color: "var(--text-muted)" }}>
+              Diese Karte kann nicht mehr von dir gescannt werden.
             </p>
-            <Link href="/" className="inline-block mt-4 text-sm underline" style={{ color: "var(--accent)" }}>
-              Alle Fundorte auf der Weltkarte ansehen
-            </Link>
-          </div>
-        ) : submitted ? (
-          <div className="rounded-2xl p-6 text-center border" style={{ background: "#fff", borderColor: "var(--border)" }}>
-            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "var(--accent-light)" }}>
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M4 10l4 4 8-8" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+
+            {/* Tracking-Link */}
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+              <div className="px-3 py-1.5 text-xs font-semibold" style={{ background: "var(--accent-light)", color: "var(--accent)" }}>
+                Reiseroute verfolgen
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2">
+                <span className="text-xs flex-1 truncate" style={{ color: "var(--text-muted)" }}>
+                  /karte/{data.card.id}
+                </span>
+                <button onClick={copyLink}
+                  className="text-xs px-2.5 py-1 rounded-lg font-semibold flex-shrink-0"
+                  style={{ background: copied ? "var(--accent)" : "var(--accent-light)", color: copied ? "#fff" : "var(--accent)" }}>
+                  {copied ? "Kopiert!" : "Kopieren"}
+                </button>
+              </div>
             </div>
-            <p className="font-semibold mb-1" style={{ color: "var(--text)" }}>Eintrag gespeichert!</p>
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Du bist jetzt Teil der Reisekette.</p>
-            <Link href="/" className="inline-block mt-4 text-sm underline" style={{ color: "var(--accent)" }}>
+
+            <Link href="/" className="block text-center mt-4 text-sm underline" style={{ color: "var(--accent)" }}>
               Alle Fundorte auf der Weltkarte ansehen
             </Link>
           </div>
@@ -228,14 +231,27 @@ export default function ScanPage() {
           <form onSubmit={handleSubmit} className="rounded-2xl p-6 border" style={{ background: "#fff", borderColor: "var(--border)" }}>
             <h2 className="font-semibold mb-5" style={{ color: "var(--text)" }}>Trag dich ein</h2>
             <div className="space-y-4">
-              <Field label="Dein Name" id="name" value={name} onChange={setName} placeholder="z. B. Marie Müller" />
-              <Field label="Dein Heimatort" id="home" value={homeLocation} onChange={setHomeLocation} placeholder="z. B. Saarbrücken, Deutschland" />
+              <Field label="Dein Name *" id="name" value={name} onChange={setName} placeholder="z. B. Marie Müller" />
+              <Field label="Dein Heimatort *" id="home" value={homeLocation} onChange={setHomeLocation} placeholder="z. B. Saarbrücken, Deutschland" />
               <div>
-                <Field label="Wo hast du die Karte gefunden?" id="found" value={foundLocation} onChange={setFoundLocation} placeholder="z. B. Sydney, Australien" />
+                <Field label="Wo hast du die Karte gefunden? *" id="found" value={foundLocation} onChange={setFoundLocation} placeholder="z. B. Sydney, Australien" />
                 <button type="button" onClick={requestGps} className="text-xs underline mt-1.5"
                   style={{ color: lat !== null ? "var(--accent)" : "var(--text-muted)" }}>
-                  {gpsLoading ? "GPS wird abgerufen…" : lat !== null ? "Standort gesetzt – Feld ggf. anpassen" : "Standort automatisch ermitteln (optional)"}
+                  {gpsLoading ? "GPS wird abgerufen…" : lat !== null ? "✓ GPS-Koordinaten gesetzt" : "GPS-Koordinaten hinzufügen (optional)"}
                 </button>
+              </div>
+              {/* Kommentar-Feld */}
+              <div>
+                <label htmlFor="comment" className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: "var(--text-muted)" }}>
+                  Kommentar (optional)
+                </label>
+                <textarea id="comment" value={comment} onChange={e => setComment(e.target.value)}
+                  placeholder="Hinterlass eine kurze Nachricht für die nächste Person…"
+                  rows={3}
+                  className="w-full rounded-xl px-4 py-2.5 text-sm outline-none resize-none"
+                  style={{ border: "1.5px solid var(--border)", background: "var(--cream)", color: "var(--text)" }}
+                  onFocus={e => (e.target.style.borderColor = "var(--accent)")}
+                  onBlur={e => (e.target.style.borderColor = "var(--border)")} />
               </div>
               {error && (
                 <p className="text-xs rounded-lg px-3 py-2" style={{ background: "#FEE2E2", color: "#991B1B" }}>{error}</p>

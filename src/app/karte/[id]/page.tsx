@@ -174,6 +174,9 @@ export default function KartePage() {
                   <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                     aus {entry.home_location} · gefunden in {entry.location_name}
                   </p>
+                  {entry.comment && (
+                    <p className="text-xs mt-1 italic" style={{ color: "var(--text-muted)" }}>„{entry.comment}"</p>
+                  )}
                   <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                     {new Date(entry.created_at).toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" })}
                   </p>

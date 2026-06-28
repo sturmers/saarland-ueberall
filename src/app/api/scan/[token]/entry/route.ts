@@ -43,21 +43,11 @@ export async function POST(
     .maybeSingle();
 
   if (lock) {
-    // Nur erlauben wenn nach dem letzten eigenen Eintrag jemand anderes eingetragen hat
-    const { data: newerEntry } = await admin
-      .from("entries")
-      .select("id")
-      .eq("card_id", card.id)
-      .gt("created_at", lock.created_at)
-      .maybeSingle();
-
-    if (!newerEntry) {
-      return NextResponse.json({ error: "already_submitted" }, { status: 409 });
-    }
+    return NextResponse.json({ error: "already_submitted" }, { status: 409 });
   }
 
   const body = await req.json();
-  const { name, location_name, home_location, lat, lng } = body;
+  const { name, location_name, home_location, comment, lat, lng } = body;
 
   if (!name?.trim() || !location_name?.trim() || !home_location?.trim()) {
     return NextResponse.json(
@@ -74,6 +64,7 @@ export async function POST(
       name: name.trim(),
       location_name: location_name.trim(),
       home_location: home_location.trim(),
+      comment: comment?.trim() ?? "",
       lat: lat ?? null,
       lng: lng ?? null,
     })

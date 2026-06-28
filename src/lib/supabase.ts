@@ -10,7 +10,8 @@ export type Entry = {
   card_id: string;
   name: string;
   location_name: string;  // Fundort (wo wurde die Karte gefunden)
-  home_location: string;  // Heimatort (wo kommt die Person her)
+  home_location: string;
+  comment: string;
   lat: number | null;
   lng: number | null;
   created_at: string;

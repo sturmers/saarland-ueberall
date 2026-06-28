@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Logo from "@/components/Logo";
@@ -9,10 +9,35 @@ import type { Entry } from "@/lib/supabase";
 
 const WorldMap = dynamic(() => import("@/components/WorldMap"), { ssr: false });
 
+const COMMENT_MAX = 280;
+
 type CardData = {
   card: { id: string; created_at: string };
   entries: Entry[];
 };
+
+type NominatimResult = {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+  address: {
+    city?: string;
+    town?: string;
+    village?: string;
+    county?: string;
+    state?: string;
+    country?: string;
+    country_code?: string;
+  };
+};
+
+function shortName(r: NominatimResult): string {
+  const a = r.address;
+  const city = a.city || a.town || a.village || a.county || a.state || "";
+  const country = a.country || "";
+  return [city, country].filter(Boolean).join(", ");
+}
 
 export default function ScanPage() {
   const { token } = useParams<{ token: string }>();
@@ -28,6 +53,15 @@ export default function ScanPage() {
   const [comment, setComment] = useState("");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
+
+  // Location search
+  const [locationQuery, setLocationQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<NominatimResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [gpsLoading, setGpsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -40,20 +74,78 @@ export default function ScanPage() {
 
   useEffect(() => {
     loadCard();
-    // Permanent one-time lock per card per person – never resets
     const lock = localStorage.getItem(`submitted_${token}`);
-    if (lock) {
-      setAlreadySubmitted(true);
-    }
+    if (lock) setAlreadySubmitted(true);
   }, [token]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const searchLocation = useCallback((query: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.length < 2) { setSuggestions([]); setShowSuggestions(false); return; }
+    debounceRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1&accept-language=de`,
+          { headers: { "User-Agent": "saarlaender-weltweit/1.0" } }
+        );
+        const results: NominatimResult[] = await res.json();
+        setSuggestions(results);
+        setShowSuggestions(results.length > 0);
+      } catch { /* ignore */ }
+      setSearchLoading(false);
+    }, 350);
+  }, []);
+
+  function selectSuggestion(r: NominatimResult) {
+    const name = shortName(r);
+    setFoundLocation(name);
+    setLocationQuery(name);
+    setLat(parseFloat(r.lat));
+    setLng(parseFloat(r.lon));
+    setShowSuggestions(false);
+    setSuggestions([]);
+  }
+
+  function clearLocation() {
+    setFoundLocation("");
+    setLocationQuery("");
+    setLat(null);
+    setLng(null);
+    setSuggestions([]);
+    setShowSuggestions(false);
+  }
 
   async function requestGps() {
     if (!navigator.geolocation) return;
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLat(pos.coords.latitude);
-        setLng(pos.coords.longitude);
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setLat(latitude);
+        setLng(longitude);
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=de`,
+            { headers: { "User-Agent": "saarlaender-weltweit/1.0" } }
+          );
+          const json = await res.json();
+          const name = shortName(json);
+          if (name) {
+            setFoundLocation(name);
+            setLocationQuery(name);
+          }
+        } catch { /* GPS coords set, name stays empty */ }
         setGpsLoading(false);
       },
       () => setGpsLoading(false)
@@ -63,8 +155,12 @@ export default function ScanPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!name.trim() || !homeLocation.trim() || !foundLocation.trim()) {
-      setError("Bitte alle Pflichtfelder ausfüllen.");
+    if (!name.trim() || !homeLocation.trim()) {
+      setError("Bitte Name und Heimatort ausfüllen.");
+      return;
+    }
+    if (!lat || !lng || !foundLocation) {
+      setError("Bitte einen Fundort aus der Liste auswählen oder GPS nutzen.");
       return;
     }
     setSubmitting(true);
@@ -114,8 +210,6 @@ export default function ScanPage() {
     </div>
   );
 
-  const trackingUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/karte/${data.card.id}`;
-
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--cream)" }}>
       <header className="border-b px-4 py-3 flex items-center justify-between" style={{ borderColor: "var(--border)", background: "#fff" }}>
@@ -128,7 +222,6 @@ export default function ScanPage() {
         </Link>
       </header>
 
-      {/* Anleitung */}
       <div className="mx-4 mt-4 rounded-2xl p-5 border" style={{ background: "#fff", borderColor: "var(--border)" }}>
         <p className="text-xs font-semibold tracking-widest uppercase mb-3" style={{ color: "var(--accent)" }}>
           Du hast diese Karte gefunden!
@@ -150,7 +243,6 @@ export default function ScanPage() {
         </ol>
       </div>
 
-      {/* Minikarte */}
       {data.entries.filter(e => e.lat).length > 0 && (
         <div className="mx-4 mt-4 rounded-xl overflow-hidden border" style={{ height: 200, borderColor: "var(--border)" }}>
           <WorldMap entries={data.entries} />
@@ -158,7 +250,6 @@ export default function ScanPage() {
       )}
 
       <div className="max-w-lg mx-auto w-full px-4 py-6 flex flex-col gap-6">
-        {/* Bisherige Kette */}
         <section>
           <h2 className="text-xs font-semibold tracking-widest uppercase mb-4" style={{ color: "var(--accent)" }}>
             Bisherige Reisekette
@@ -189,7 +280,6 @@ export default function ScanPage() {
           )}
         </section>
 
-        {/* Status-Box oder Formular */}
         {alreadySubmitted ? (
           <div className="rounded-2xl p-6 border" style={{ background: "#fff", borderColor: "var(--border)" }}>
             <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "var(--accent-light)" }}>
@@ -205,8 +295,6 @@ export default function ScanPage() {
             <p className="text-sm text-center mb-4" style={{ color: "var(--text-muted)" }}>
               Diese Karte kann nicht mehr von dir gescannt werden.
             </p>
-
-            {/* Tracking-Link */}
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
               <div className="px-3 py-1.5 text-xs font-semibold" style={{ background: "var(--accent-light)", color: "var(--accent)" }}>
                 Reiseroute verfolgen
@@ -222,7 +310,6 @@ export default function ScanPage() {
                 </button>
               </div>
             </div>
-
             <Link href="/" className="block text-center mt-4 text-sm underline" style={{ color: "var(--accent)" }}>
               Alle Fundorte auf der Weltkarte ansehen
             </Link>
@@ -233,19 +320,97 @@ export default function ScanPage() {
             <div className="space-y-4">
               <Field label="Dein Name *" id="name" value={name} onChange={setName} placeholder="z. B. Marie Müller" />
               <Field label="Dein Heimatort *" id="home" value={homeLocation} onChange={setHomeLocation} placeholder="z. B. Saarbrücken, Deutschland" />
-              <div>
-                <Field label="Wo hast du die Karte gefunden? *" id="found" value={foundLocation} onChange={setFoundLocation} placeholder="z. B. Sydney, Australien" />
-                <button type="button" onClick={requestGps} className="text-xs underline mt-1.5"
-                  style={{ color: lat !== null ? "var(--accent)" : "var(--text-muted)" }}>
-                  {gpsLoading ? "GPS wird abgerufen…" : lat !== null ? "✓ GPS-Koordinaten gesetzt" : "GPS-Koordinaten hinzufügen (optional)"}
-                </button>
-              </div>
-              {/* Kommentar-Feld */}
-              <div>
-                <label htmlFor="comment" className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: "var(--text-muted)" }}>
-                  Kommentar (optional)
+
+              {/* Ortssuche mit Autocomplete */}
+              <div ref={searchRef}>
+                <label className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: "var(--text-muted)" }}>
+                  Wo hast du die Karte gefunden? *
                 </label>
-                <textarea id="comment" value={comment} onChange={e => setComment(e.target.value)}
+                {lat && lng && foundLocation ? (
+                  /* Ort ausgewählt – zeige Tag mit X */
+                  <div className="flex items-center gap-2 rounded-xl px-4 py-2.5"
+                    style={{ border: "1.5px solid var(--accent)", background: "var(--accent-light)" }}>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="flex-shrink-0">
+                      <path d="M7 1C4.79 1 3 2.79 3 5c0 3.25 4 8 4 8s4-4.75 4-8c0-2.21-1.79-4-4-4z" fill="var(--accent)"/>
+                      <circle cx="7" cy="5" r="1.5" fill="#fff"/>
+                    </svg>
+                    <span className="text-sm flex-1" style={{ color: "var(--accent)" }}>{foundLocation}</span>
+                    <button type="button" onClick={clearLocation}
+                      className="text-xs px-1.5 py-0.5 rounded font-bold"
+                      style={{ color: "var(--accent)" }}>✕</button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={locationQuery}
+                      onChange={e => { setLocationQuery(e.target.value); searchLocation(e.target.value); }}
+                      placeholder="Stadt oder Ort suchen…"
+                      autoComplete="off"
+                      className="w-full rounded-xl px-4 py-2.5 text-sm outline-none pr-8"
+                      style={{ border: "1.5px solid var(--border)", background: "var(--cream)", color: "var(--text)" }}
+                      onFocus={e => { e.target.style.borderColor = "var(--accent)"; if (suggestions.length > 0) setShowSuggestions(true); }}
+                      onBlur={e => e.target.style.borderColor = "var(--border)"}
+                    />
+                    {searchLoading && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: "var(--text-muted)" }}>…</span>
+                    )}
+                    {showSuggestions && suggestions.length > 0 && (
+                      <ul className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden shadow-lg border"
+                        style={{ background: "#fff", borderColor: "var(--border)" }}>
+                        {suggestions.map(r => (
+                          <li key={r.place_id}>
+                            <button type="button" onMouseDown={() => selectSuggestion(r)}
+                              className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-start gap-2"
+                              style={{ color: "var(--text)" }}>
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="flex-shrink-0 mt-0.5">
+                                <path d="M7 1C4.79 1 3 2.79 3 5c0 3.25 4 8 4 8s4-4.75 4-8c0-2.21-1.79-4-4-4z" fill="var(--accent)"/>
+                                <circle cx="7" cy="5" r="1.5" fill="#fff"/>
+                              </svg>
+                              <span>
+                                <span className="font-medium">{shortName(r)}</span>
+                                <span className="block text-xs truncate" style={{ color: "var(--text-muted)", maxWidth: "90%" }}>
+                                  {r.display_name}
+                                </span>
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {/* GPS-Button */}
+                {!(lat && lng && foundLocation) && (
+                  <button type="button" onClick={requestGps}
+                    className="flex items-center gap-1.5 text-xs mt-2"
+                    style={{ color: "var(--text-muted)" }}>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <circle cx="6" cy="6" r="2" fill="var(--accent)"/>
+                      <circle cx="6" cy="6" r="5" stroke="var(--accent)" strokeWidth="1" fill="none"/>
+                      <line x1="6" y1="1" x2="6" y2="0" stroke="var(--accent)" strokeWidth="1.5"/>
+                      <line x1="6" y1="12" x2="6" y2="11" stroke="var(--accent)" strokeWidth="1.5"/>
+                      <line x1="1" y1="6" x2="0" y2="6" stroke="var(--accent)" strokeWidth="1.5"/>
+                      <line x1="12" y1="6" x2="11" y2="6" stroke="var(--accent)" strokeWidth="1.5"/>
+                    </svg>
+                    {gpsLoading ? "GPS wird abgerufen…" : "Stattdessen GPS nutzen"}
+                  </button>
+                )}
+              </div>
+
+              {/* Persönlicher Text */}
+              <div>
+                <div className="flex justify-between items-baseline mb-1.5">
+                  <label htmlFor="comment" className="block text-xs font-semibold tracking-wide" style={{ color: "var(--text-muted)" }}>
+                    Dein persönlicher Text (optional)
+                  </label>
+                  <span className="text-xs" style={{ color: comment.length > COMMENT_MAX ? "#991B1B" : "var(--text-muted)" }}>
+                    {comment.length}/{COMMENT_MAX}
+                  </span>
+                </div>
+                <textarea id="comment" value={comment}
+                  onChange={e => setComment(e.target.value.slice(0, COMMENT_MAX))}
                   placeholder="Hinterlass eine kurze Nachricht für die nächste Person…"
                   rows={3}
                   className="w-full rounded-xl px-4 py-2.5 text-sm outline-none resize-none"
@@ -253,14 +418,20 @@ export default function ScanPage() {
                   onFocus={e => (e.target.style.borderColor = "var(--accent)")}
                   onBlur={e => (e.target.style.borderColor = "var(--border)")} />
               </div>
+
               {error && (
                 <p className="text-xs rounded-lg px-3 py-2" style={{ background: "#FEE2E2", color: "#991B1B" }}>{error}</p>
               )}
-              <button type="submit" disabled={submitting}
+              <button type="submit" disabled={submitting || !lat || !lng}
                 className="w-full py-3 rounded-xl text-sm font-semibold"
-                style={{ background: "var(--accent)", color: "#fff", opacity: submitting ? 0.6 : 1 }}>
+                style={{ background: "var(--accent)", color: "#fff", opacity: (submitting || !lat || !lng) ? 0.5 : 1 }}>
                 {submitting ? "Wird gespeichert…" : "Eintragen"}
               </button>
+              {!lat && (
+                <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
+                  Bitte zuerst einen Fundort auswählen
+                </p>
+              )}
             </div>
           </form>
         )}

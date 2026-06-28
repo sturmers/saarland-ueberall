@@ -33,13 +33,27 @@ export default function ScanPage() {
   async function loadCard() {
     const res = await fetch(`/api/scan/${token}`);
     if (res.status === 404) { setNotFound(true); return; }
-    const json = await res.json();
-    setData(json);
-    // Server entscheidet ob Eintragen erlaubt ist
-    setCanSubmit(json.can_submit ?? true);
+    setData(await res.json());
   }
 
-  useEffect(() => { loadCard(); }, [token]);
+  useEffect(() => {
+    loadCard();
+    // Dieses Gerät hat bereits eingetragen wenn localStorage-Eintrag vorhanden
+    const lock = localStorage.getItem(`submitted_${token}`);
+    if (lock) {
+      // Prüfen ob inzwischen jemand anderes eingetragen hat (dann darf man wieder)
+      fetch(`/api/scan/${token}`)
+        .then(r => r.json())
+        .then(json => {
+          const entries = json.entries ?? [];
+          const lockTime = Number(lock);
+          const newerEntry = entries.find(
+            (e: { created_at: string }) => new Date(e.created_at).getTime() > lockTime
+          );
+          setCanSubmit(!!newerEntry);
+        });
+    }
+  }, [token]);
 
   async function requestGps() {
     if (!navigator.geolocation) return;
@@ -89,6 +103,8 @@ export default function ScanPage() {
       setSubmitting(false);
       return;
     }
+    localStorage.setItem(`submitted_${token}`, String(Date.now()));
+    setCanSubmit(false);
     setSubmitted(true);
     await loadCard();
     setSubmitting(false);

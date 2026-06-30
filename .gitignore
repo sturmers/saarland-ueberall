@@ -21,3 +21,7 @@ yarn-error.log*
 
 # Vercel
 .vercel
+
+# Figma design source (reference only, not part of the app)
+CarryOn Web-App Design/
+CarryOn Web-App Design.zip

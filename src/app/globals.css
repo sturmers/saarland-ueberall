@@ -3,18 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --cream: #FFFFFF;
-  --cream-dark: #F4F4F4;
-  --border: #E8E8E8;
-  --text: #0A0A0A;
-  --text-muted: #787878;
-  --accent: #E85422;
-  --accent-hover: #C43D15;
-  --accent-light: #FFF2EE;
+  --cream: #FAF6F0;
+  --cream-dark: #E8DCC8;
+  --border: #E2D6C5;
+  --text: #2E2620;
+  --text-muted: #7A6D62;
+  --accent: #C66B45;
+  --accent-hover: #B05A35;
+  --accent-light: #F3E4D8;
+  --dark: #2E2620;
+  --green: #6B7A4F;
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px;
 }
 
 body {
@@ -23,6 +30,15 @@ body {
   font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: clip;
+}
+
+html {
+  overflow-x: clip;
+}
+
+.font-serif-display {
+  font-family: var(--font-playfair), Georgia, serif;
 }
 
 .leaflet-container {

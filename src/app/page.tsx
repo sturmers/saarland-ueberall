@@ -14,7 +14,11 @@ export default async function Home() {
     .from("settings")
     .select("key, value");
 
+  const { data: cards } = await supabase
+    .from("cards")
+    .select("id, card_name, launch_message, created_at");
+
   const instagram = settings?.find((s) => s.key === "instagram_url")?.value ?? "";
 
-  return <HomeClient entries={entries ?? []} instagramUrl={instagram} />;
+  return <HomeClient entries={entries ?? []} cards={cards ?? []} instagramUrl={instagram} />;
 }

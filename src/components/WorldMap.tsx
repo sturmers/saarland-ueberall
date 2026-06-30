@@ -5,7 +5,7 @@ import type { Entry } from "@/lib/supabase";
 import "leaflet/dist/leaflet.css";
 
 const CARD_COLORS = [
-  "#B45309", "#2563EB", "#059669", "#7C3AED",
+  "#E85422", "#2563EB", "#059669", "#7C3AED",
   "#DB2777", "#0891B2", "#D97706", "#DC2626",
   "#65A30D", "#9333EA",
 ];
@@ -33,11 +33,11 @@ export default function WorldMap({ entries }: Props) {
     <MapContainer
       center={[20, 10]}
       zoom={2}
-      style={{ height: "100%", width: "100%", minHeight: 480 }}
+      style={{ height: "100%", width: "100%", minHeight: 520 }}
       scrollWheelZoom
-      // Welt nur einmal anzeigen
-      maxBounds={[[-90, -180], [90, 180]]}
+      maxBounds={[[-85, -180], [85, 180]]}
       maxBoundsViscosity={1.0}
+      minZoom={2}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
@@ -57,7 +57,7 @@ export default function WorldMap({ entries }: Props) {
             {coords.length > 1 && (
               <Polyline
                 positions={coords}
-                pathOptions={{ color, weight: 2, opacity: 0.6, dashArray: "6 4" }}
+                pathOptions={{ color, weight: 2.5, opacity: 0.7, dashArray: "6 5" }}
               />
             )}
             {cardEntries
@@ -66,26 +66,26 @@ export default function WorldMap({ entries }: Props) {
                 <CircleMarker
                   key={entry.id}
                   center={[entry.lat!, entry.lng!]}
-                  radius={i === 0 ? 6 : 9}
-                  pathOptions={{ color: "#fff", fillColor: color, fillOpacity: 0.9, weight: 2 }}
+                  radius={i === 0 ? 7 : 10}
+                  pathOptions={{ color: "#fff", fillColor: color, fillOpacity: 1, weight: 2.5 }}
                 >
                   <Popup>
-                    <strong style={{ fontSize: 13 }}>{entry.name}</strong>
+                    <strong style={{ fontSize: 13, letterSpacing: "-0.01em" }}>{entry.name}</strong>
                     <br />
-                    <span style={{ color: "#78716C", fontSize: 12 }}>
-                      Gefunden in {entry.location_name}
+                    <span style={{ color: "#787878", fontSize: 12 }}>
+                      Found in {entry.location_name}
                     </span>
                     {entry.home_location && (
                       <>
                         <br />
-                        <span style={{ color: "#78716C", fontSize: 12 }}>
-                          Aus {entry.home_location}
+                        <span style={{ color: "#787878", fontSize: 12 }}>
+                          From {entry.home_location}
                         </span>
                       </>
                     )}
                     <br />
-                    <a href={`/karte/${entry.card_id}`} style={{ color: "#B45309", fontSize: 12 }}>
-                      Reisekette ansehen →
+                    <a href={`/karte/${entry.card_id}`} style={{ color: "#E85422", fontSize: 12, fontWeight: 600 }}>
+                      See full journey →
                     </a>
                   </Popup>
                 </CircleMarker>

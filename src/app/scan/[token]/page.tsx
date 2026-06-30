@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import Logo from "@/components/Logo";
 import Link from "next/link";
 import type { Entry } from "@/lib/supabase";
 
@@ -200,30 +199,30 @@ export default function ScanPage() {
   }
 
   if (notFound) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center" style={{ background: "var(--cream)" }}>
-      <Logo size={48} color="var(--accent)" />
-      <h1 className="text-2xl font-bold mt-6 mb-2">Ungültiger QR-Code</h1>
-      <p className="text-sm" style={{ color: "var(--text-muted)" }}>Dieser QR-Code ist nicht gültig oder wurde deaktiviert.</p>
-      <Link href="/" className="mt-6 text-sm underline" style={{ color: "var(--accent)" }}>Zur Startseite</Link>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center" style={{ background: "#fff" }}>
+      <h1 className="text-3xl font-bold mb-3" style={{ letterSpacing: "-0.03em" }}>Invalid QR Code</h1>
+      <p className="text-sm mb-8" style={{ color: "var(--text-muted)" }}>This QR code is not valid or has been deactivated.</p>
+      <Link href="/" className="text-sm font-semibold underline" style={{ color: "var(--accent)" }}>Back to map</Link>
     </div>
   );
 
   if (!data) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--cream)" }}>
-      <p style={{ color: "var(--text-muted)" }}>Lädt…</p>
+    <div className="min-h-screen flex items-center justify-center" style={{ background: "#fff" }}>
+      <p style={{ color: "var(--text-muted)" }}>Loading…</p>
     </div>
   );
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--cream)" }}>
-      <header className="border-b px-4 py-3 flex items-center justify-between" style={{ borderColor: "var(--border)", background: "#fff" }}>
-        <Link href="/" className="flex items-center gap-2">
-          <Logo size={30} color="var(--accent)" />
-          <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>Saarländer weltweit</span>
-        </Link>
-        <Link href={`/karte/${data.card.id}`} className="text-xs underline" style={{ color: "var(--text-muted)" }}>
-          Nur ansehen
-        </Link>
+      <header style={{ borderBottom: "1px solid var(--border)", background: "#fff" }}>
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="font-bold text-xl tracking-tight" style={{ letterSpacing: "-0.02em" }}>
+            Carry<span style={{ color: "var(--accent)" }}>On</span>
+          </Link>
+          <Link href={`/karte/${data.card.id}`} className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+            View only →
+          </Link>
+        </div>
       </header>
 
       <div className="mx-4 mt-4 rounded-2xl p-5 border" style={{ background: "#fff", borderColor: "var(--border)" }}>

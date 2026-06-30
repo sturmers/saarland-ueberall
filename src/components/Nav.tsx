@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Logo from "./Logo";
 
 type Props = {
   instagramUrl?: string;
@@ -7,44 +6,25 @@ type Props = {
 
 export default function Nav({ instagramUrl }: Props) {
   return (
-    <header className="border-b" style={{ background: "var(--cream)", borderColor: "var(--border)" }}>
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <Logo size={34} color="var(--accent)" />
-          <div>
-            <p className="font-semibold text-sm leading-tight" style={{ color: "var(--text)" }}>
-              Saarländer
-            </p>
-            <p className="text-xs leading-tight" style={{ color: "var(--text-muted)" }}>
-              weltweit
-            </p>
-          </div>
+    <header style={{ background: "#fff", borderBottom: "1px solid var(--border)" }}>
+      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-1">
+          <span className="font-bold text-xl tracking-tight" style={{ color: "var(--text)", letterSpacing: "-0.02em" }}>
+            Carry<span style={{ color: "var(--accent)" }}>On</span>
+          </span>
         </Link>
 
-        <nav className="flex items-center gap-6">
-          <Link
-            href="/"
-            className="text-sm transition-colors"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Weltkarte
+        <nav className="flex items-center gap-8">
+          <Link href="/" className="text-sm font-medium transition-colors hover:opacity-60" style={{ color: "var(--text-muted)" }}>
+            World Map
           </Link>
           {instagramUrl && (
-            <a
-              href={instagramUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm transition-colors"
-              style={{ color: "var(--text-muted)" }}
-            >
+            <a href={instagramUrl} target="_blank" rel="noopener noreferrer"
+              className="text-sm font-medium transition-colors hover:opacity-60" style={{ color: "var(--text-muted)" }}>
               Instagram
             </a>
           )}
-          <Link
-            href="/impressum"
-            className="text-sm transition-colors"
-            style={{ color: "var(--text-muted)" }}
-          >
+          <Link href="/impressum" className="text-sm font-medium transition-colors hover:opacity-60" style={{ color: "var(--text-muted)" }}>
             Impressum
           </Link>
         </nav>

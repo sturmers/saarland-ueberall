@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import Logo from "@/components/Logo";
 import Link from "next/link";
 import type { Entry } from "@/lib/supabase";
 
@@ -14,257 +13,197 @@ type CardData = {
   entries: Entry[];
 };
 
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+function formatKm(km: number): string {
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  if (km < 10) return `${km.toFixed(1)} km`;
+  return `${Math.round(km).toLocaleString("de-DE")} km`;
+}
+
+function daysBetween(a: string, b: string): number {
+  return Math.round((new Date(b).getTime() - new Date(a).getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function formatDays(days: number): string {
+  if (days === 0) return "Selber Tag";
+  if (days === 1) return "1 Tag";
+  if (days < 30) return `${days} Tage`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? "1 Monat" : `${months} Monate`;
+}
+
 export default function KartePage() {
   const { id } = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
-  const canWrite = searchParams.get("scan") === "1";
   const [data, setData] = useState<CardData | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
 
-  const [name, setName] = useState("");
-  const [homeLocation, setHomeLocation] = useState("");
-  const [foundLocation, setFoundLocation] = useState("");
-  const [lat, setLat] = useState<number | null>(null);
-  const [lng, setLng] = useState<number | null>(null);
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  async function loadCard() {
-    const res = await fetch(`/api/card/${id}`);
-    if (res.status === 404) { setNotFound(true); return; }
-    setData(await res.json());
-  }
-
-  useEffect(() => { loadCard(); }, [id]);
-
-  async function requestGps() {
-    if (!navigator.geolocation) return;
-    setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setLat(latitude);
-        setLng(longitude);
-        // Reverse Geocoding via Nominatim (kostenlos, kein API-Key)
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=de`,
-            { headers: { "User-Agent": "saarlaender-weltweit/1.0" } }
-          );
-          const json = await res.json();
-          const addr = json.address;
-          const city =
-            addr.city || addr.town || addr.village || addr.county || addr.state || "";
-          const country = addr.country || "";
-          if (city || country) {
-            setFoundLocation([city, country].filter(Boolean).join(", "));
-          }
-        } catch {
-          // Geocoding fehlgeschlagen – Nutzer trägt manuell ein
-        }
-        setGpsLoading(false);
-      },
-      () => setGpsLoading(false)
-    );
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (!name.trim() || !homeLocation.trim() || !foundLocation.trim()) {
-      setError("Bitte alle Felder ausfüllen.");
-      return;
-    }
-    setSubmitting(true);
-    const res = await fetch(`/api/card/${id}/entry`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, home_location: homeLocation, location_name: foundLocation, lat, lng }),
-    });
-    if (!res.ok) {
-      const j = await res.json();
-      setError(j.error ?? "Fehler beim Speichern.");
-      setSubmitting(false);
-      return;
-    }
-    setSubmitted(true);
-    await loadCard();
-    setSubmitting(false);
-  }
+  useEffect(() => {
+    fetch(`/api/card/${id}`)
+      .then(r => { if (r.status === 404) { setNotFound(true); return null; } return r.json(); })
+      .then(d => { if (d) setData(d); });
+  }, [id]);
 
   if (notFound) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
-      <Logo size={48} color="var(--accent)" />
-      <h1 className="text-2xl font-bold mt-6 mb-2">Karte nicht gefunden</h1>
-      <p style={{ color: "var(--text-muted)" }}>Die ID „{id}" existiert nicht.</p>
-      <Link href="/" className="mt-6 text-sm underline" style={{ color: "var(--accent)" }}>Zur Startseite</Link>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center" style={{ background: "#fff" }}>
+      <h1 className="text-3xl font-bold mb-3" style={{ letterSpacing: "-0.03em" }}>Card not found</h1>
+      <p className="text-sm mb-8" style={{ color: "var(--text-muted)" }}>The ID „{id}" doesn't exist.</p>
+      <Link href="/" className="text-sm font-semibold underline" style={{ color: "var(--accent)" }}>Back to map</Link>
     </div>
   );
 
   if (!data) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <p style={{ color: "var(--text-muted)" }}>Lädt…</p>
+    <div className="min-h-screen flex items-center justify-center" style={{ background: "#fff" }}>
+      <p style={{ color: "var(--text-muted)" }}>Loading…</p>
     </div>
   );
 
+  const sorted = [...data.entries].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  // Total distance
+  let totalKm = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    if (prev.lat && prev.lng && curr.lat && curr.lng) {
+      totalKm += haversineKm(prev.lat, prev.lng, curr.lat, curr.lng);
+    }
+  }
+
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--cream)" }}>
-      {/* Header */}
-      <header className="border-b px-4 py-3 flex items-center justify-between" style={{ borderColor: "var(--border)", background: "var(--cream)" }}>
-        <Link href="/" className="flex items-center gap-2">
-          <Logo size={30} color="var(--accent)" />
-          <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>Saarländer weltweit</span>
-        </Link>
-        <span className="text-xs font-mono px-2 py-1 rounded" style={{ background: "var(--cream-dark)", color: "var(--text-muted)" }}>
-          #{id}
-        </span>
+    <div className="min-h-screen flex flex-col" style={{ background: "#fff" }}>
+      <header style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="font-bold text-xl tracking-tight" style={{ letterSpacing: "-0.02em" }}>
+            Carry<span style={{ color: "var(--accent)" }}>On</span>
+          </Link>
+          <span className="text-xs font-mono px-2 py-1 rounded-md" style={{ background: "var(--cream-dark)", color: "var(--text-muted)" }}>
+            #{id}
+          </span>
+        </div>
       </header>
 
-      {/* Anleitung für Finder – nur beim Scannen */}
-      {canWrite && <div className="mx-4 mt-4 rounded-2xl p-5 border" style={{ background: "#fff", borderColor: "var(--border)" }}>
-        <p className="text-xs font-semibold tracking-widest uppercase mb-3" style={{ color: "var(--accent)" }}>
-          Du hast diese Karte gefunden?
-        </p>
-        <ol className="space-y-2">
-          {[
-            "Trag deinen Namen und deinen Ort unten ein – du wirst Teil der Reisekette.",
-            "Gib die Karte weiter: Hinterlass sie an einem öffentlichen Ort, z. B. an einem Auto mit Saarland-Kennzeichen, in einem Café oder beim nächsten Saarländer, dem du begegnest.",
-            "Verfolge online, wohin die Karte als nächstes reist.",
-          ].map((step, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm" style={{ color: "var(--text-muted)" }}>
-              <span className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold mt-0.5"
-                style={{ background: "var(--accent-light)", color: "var(--accent)" }}>
-                {i + 1}
-              </span>
-              {step}
-            </li>
-          ))}
-        </ol>
-      </div>}
-
-      {/* Minikarte dieser Karte */}
-      {data.entries.filter(e => e.lat).length > 0 && (
-        <div className="mx-4 mt-4 rounded-xl overflow-hidden border" style={{ height: 200, borderColor: "var(--border)" }}>
+      {/* Map */}
+      {sorted.filter(e => e.lat).length > 0 && (
+        <div style={{ height: 340, borderBottom: "1px solid var(--border)", position: "relative" }}>
           <WorldMap entries={data.entries} />
         </div>
       )}
 
-      <div className="max-w-lg mx-auto w-full px-4 py-6 flex flex-col gap-6">
+      <div className="max-w-2xl mx-auto w-full px-6 py-12">
 
-        {/* Bisherige Kette */}
-        <section>
-          <h2 className="text-xs font-semibold tracking-widest uppercase mb-4" style={{ color: "var(--accent)" }}>
-            Bisherige Reisekette
-          </h2>
-          {data.entries.length === 0 ? (
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-              Noch keine Einträge — sei die erste Person!
-            </p>
-          ) : (
-            <ol className="relative border-l-2 pl-6 space-y-6" style={{ borderColor: "var(--border)" }}>
-              {data.entries.map((entry, i) => (
-                <li key={entry.id} className="relative">
-                  <div className="absolute -left-[26px] w-4 h-4 rounded-full border-2 flex items-center justify-center text-xs font-bold"
-                    style={{ background: "var(--accent)", borderColor: "var(--accent)", color: "#fff", top: 2 }}>
-                    {i + 1}
-                  </div>
-                  <p className="font-semibold text-sm" style={{ color: "var(--text)" }}>{entry.name}</p>
-                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                    aus {entry.home_location} · gefunden in {entry.location_name}
-                  </p>
-                  {entry.comment && (
-                    <p className="text-xs mt-1 italic" style={{ color: "var(--text-muted)" }}>„{entry.comment}"</p>
-                  )}
-                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                    {new Date(entry.created_at).toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" })}
-                  </p>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-
-        {/* Formular – nur beim Scannen via QR-Code */}
-        {!canWrite && (
-          <div className="rounded-2xl p-5 border text-center" style={{ background: "#fff", borderColor: "var(--border)" }}>
-            <p className="text-sm font-medium mb-1" style={{ color: "var(--text)" }}>Karte gefunden?</p>
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Scanne den QR-Code auf der physischen Karte, um dich einzutragen.
-            </p>
+        {/* Stats row */}
+        {sorted.length > 0 && (
+          <div className="grid grid-cols-3 gap-px mb-12" style={{ background: "var(--border)" }}>
+            {[
+              { value: sorted.length, label: "Finds" },
+              { value: totalKm > 0 ? formatKm(totalKm) : "—", label: "Total Distance" },
+              {
+                value: sorted.length > 1 ? formatDays(daysBetween(sorted[0].created_at, sorted[sorted.length - 1].created_at)) : "—",
+                label: "Journey Duration"
+              },
+            ].map(s => (
+              <div key={s.label} className="py-6 text-center" style={{ background: "#fff" }}>
+                <p className="text-2xl font-bold mb-1" style={{ letterSpacing: "-0.03em" }}>{s.value}</p>
+                <p className="text-xs font-medium uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{s.label}</p>
+              </div>
+            ))}
           </div>
         )}
-        {canWrite && submitted ? (
-          <div className="rounded-2xl p-6 text-center border" style={{ background: "#fff", borderColor: "var(--border)" }}>
-            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "var(--accent-light)" }}>
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M4 10l4 4 8-8" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <p className="font-semibold mb-1" style={{ color: "var(--text)" }}>Eintrag gespeichert!</p>
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Du bist jetzt Teil der Reisekette dieser Karte.</p>
-            <Link href="/" className="inline-block mt-4 text-sm underline" style={{ color: "var(--accent)" }}>
-              Alle Fundorte auf der Weltkarte ansehen
-            </Link>
+
+        {/* Journey chain */}
+        <h2 className="text-xs font-semibold tracking-widest uppercase mb-8" style={{ color: "var(--accent)" }}>
+          Journey Chain
+        </h2>
+
+        {sorted.length === 0 ? (
+          <div className="py-16 text-center" style={{ border: "1px solid var(--border)", borderRadius: 16 }}>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>No finds yet — be the first!</p>
           </div>
-        ) : canWrite ? (
-          <form onSubmit={handleSubmit} className="rounded-2xl p-6 border" style={{ background: "#fff", borderColor: "var(--border)" }}>
-            <h2 className="font-semibold mb-5" style={{ color: "var(--text)" }}>Trag dich ein</h2>
+        ) : (
+          <ol className="relative">
+            {sorted.map((entry, i) => {
+              const prev = sorted[i - 1];
+              const distKm = prev?.lat && prev?.lng && entry.lat && entry.lng
+                ? haversineKm(prev.lat, prev.lng, entry.lat, entry.lng)
+                : null;
+              const days = prev ? daysBetween(prev.created_at, entry.created_at) : null;
 
-            <div className="space-y-4">
-              <Field label="Dein Name" id="name" value={name} onChange={setName} placeholder="z. B. Marie Müller" />
-              <Field label="Dein Heimatort" id="home" value={homeLocation} onChange={setHomeLocation} placeholder="z. B. Saarbrücken, Deutschland" />
-              <Field label="Wo hast du die Karte gefunden?" id="found" value={foundLocation} onChange={setFoundLocation} placeholder="z. B. Sydney, Australien" />
+              return (
+                <li key={entry.id}>
+                  {/* Leg info between stops */}
+                  {i > 0 && (
+                    <div className="flex items-center gap-4 py-4 ml-5">
+                      <div style={{ width: 1, alignSelf: "stretch", background: "var(--border)", flexShrink: 0 }} />
+                      <div className="flex items-center gap-3 text-xs" style={{ color: "var(--text-muted)" }}>
+                        {distKm !== null && (
+                          <span className="flex items-center gap-1">
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                              <path d="M1 5h8M6 2l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            {formatKm(distKm)}
+                          </span>
+                        )}
+                        {days !== null && (
+                          <>
+                            <span style={{ color: "var(--border)" }}>·</span>
+                            <span>{formatDays(days)}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-              <div>
-                <button type="button" onClick={requestGps}
-                  className="text-xs underline"
-                  style={{ color: lat !== null ? "var(--accent)" : "var(--text-muted)" }}>
-                  {gpsLoading ? "GPS wird abgerufen…" : lat !== null ? "GPS-Standort gesetzt" : "Standort automatisch ermitteln (optional)"}
-                </button>
-              </div>
+                  {/* Stop */}
+                  <div className="flex items-start gap-4">
+                    <div className="flex flex-col items-center flex-shrink-0">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold"
+                        style={{ background: i === 0 ? "var(--accent)" : "var(--cream-dark)", color: i === 0 ? "#fff" : "var(--text)" }}>
+                        {i + 1}
+                      </div>
+                    </div>
+                    <div className="pb-2 flex-1 min-w-0">
+                      <p className="font-bold text-base" style={{ letterSpacing: "-0.01em" }}>{entry.name}</p>
+                      <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        From {entry.home_location} · Found in <strong style={{ color: "var(--text)", fontWeight: 600 }}>{entry.location_name}</strong>
+                      </p>
+                      {entry.comment && (
+                        <p className="text-sm mt-2 italic" style={{ color: "var(--text-muted)" }}>„{entry.comment}"</p>
+                      )}
+                      <p className="text-xs mt-1.5" style={{ color: "var(--border)" }}>
+                        {new Date(entry.created_at).toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" })}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
 
-              {error && (
-                <p className="text-xs rounded-lg px-3 py-2" style={{ background: "#FEE2E2", color: "#991B1B" }}>{error}</p>
-              )}
-
-              <button type="submit" disabled={submitting}
-                className="w-full py-3 rounded-xl text-sm font-semibold transition-colors"
-                style={{ background: "var(--accent)", color: "#fff", opacity: submitting ? 0.6 : 1 }}>
-                {submitting ? "Wird gespeichert…" : "Eintragen"}
-              </button>
-            </div>
-          </form>
-        ) : null}
+        {/* Hint for web visitors */}
+        <div className="mt-12 p-6 rounded-2xl text-center" style={{ background: "var(--cream-dark)" }}>
+          <p className="text-sm font-medium mb-1">Found this card?</p>
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            Scan the QR code on the physical card to add your stop to the journey.
+          </p>
+        </div>
       </div>
 
-      <footer className="mt-auto px-4 py-4 text-center text-xs border-t" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-        <Link href="/impressum" className="underline mr-4">Impressum</Link>
-        <Link href="/datenschutz" className="underline">Datenschutz</Link>
+      <footer style={{ borderTop: "1px solid var(--border)", marginTop: "auto" }}>
+        <div className="max-w-7xl mx-auto px-6 py-6 flex gap-8 text-xs" style={{ color: "var(--text-muted)" }}>
+          <Link href="/" className="hover:opacity-60 transition-opacity">World Map</Link>
+          <Link href="/impressum" className="hover:opacity-60 transition-opacity">Impressum</Link>
+          <Link href="/datenschutz" className="hover:opacity-60 transition-opacity">Datenschutz</Link>
+        </div>
       </footer>
-    </div>
-  );
-}
-
-function Field({ label, id, value, onChange, placeholder }: {
-  label: string; id: string; value: string;
-  onChange: (v: string) => void; placeholder: string;
-}) {
-  return (
-    <div>
-      <label htmlFor={id} className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: "var(--text-muted)" }}>
-        {label}
-      </label>
-      <input
-        id={id} type="text" value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full rounded-xl px-4 py-2.5 text-sm outline-none transition-all"
-        style={{ border: "1.5px solid var(--border)", background: "var(--cream)", color: "var(--text)" }}
-        onFocus={e => (e.target.style.borderColor = "var(--accent)")}
-        onBlur={e => (e.target.style.borderColor = "var(--border)")}
-      />
     </div>
   );
 }

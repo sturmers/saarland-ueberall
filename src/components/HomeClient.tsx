@@ -5,6 +5,37 @@ import Nav from "./Nav";
 import type { Entry } from "@/lib/supabase";
 import Link from "next/link";
 
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+function totalDistanceKm(entries: Entry[]): number {
+  const byCard: Record<string, Entry[]> = {};
+  for (const e of entries) {
+    if (!byCard[e.card_id]) byCard[e.card_id] = [];
+    byCard[e.card_id].push(e);
+  }
+  let total = 0;
+  for (const cardEntries of Object.values(byCard)) {
+    const sorted = [...cardEntries].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    for (let i = 1; i < sorted.length; i++) {
+      const p = sorted[i - 1], c = sorted[i];
+      if (p.lat && p.lng && c.lat && c.lng) total += haversineKm(p.lat, p.lng, c.lat, c.lng);
+    }
+  }
+  return total;
+}
+
+function formatKm(km: number): string {
+  if (km < 1000) return `${Math.round(km)} km`;
+  return `${(km / 1000).toFixed(1).replace(".", ",")} Tsd. km`;
+}
+
 const WorldMap = dynamic(() => import("./WorldMap"), { ssr: false });
 
 type Props = {
@@ -30,6 +61,7 @@ export default function HomeClient({ entries, instagramUrl }: Props) {
   const uniqueCountries = new Set(
     entries.map(e => e.location_name?.split(",").pop()?.trim()).filter(Boolean)
   ).size;
+  const kmTotal = totalDistanceKm(entries);
 
   return (
     <div className="flex flex-col min-h-screen" style={{ background: "#fff" }}>
@@ -38,9 +70,6 @@ export default function HomeClient({ entries, instagramUrl }: Props) {
       {/* Hero */}
       <section className="max-w-7xl mx-auto w-full px-6 pt-16 pb-12">
         <div className="max-w-3xl">
-          <p className="text-xs font-semibold tracking-widest uppercase mb-6" style={{ color: "var(--accent)" }}>
-            AWAH Crafted for Life
-          </p>
           <h1 className="font-bold leading-none mb-6" style={{
             fontSize: "clamp(2.5rem, 6vw, 5rem)",
             letterSpacing: "-0.04em",
@@ -53,16 +82,23 @@ export default function HomeClient({ entries, instagramUrl }: Props) {
             Scan the QR code, add your name and location, then pass it on.
             Watch the journey unfold on the live map below.
           </p>
+          <Link href="/leaderboard"
+            className="inline-flex items-center gap-2 mt-6 text-sm font-semibold"
+            style={{ color: "var(--accent)" }}>
+            View Leaderboard →
+          </Link>
         </div>
 
         {/* Stats */}
         {entries.length > 0 && (
-          <div className="flex items-center gap-12 mt-12 pt-12" style={{ borderTop: "1px solid var(--border)" }}>
+          <div className="flex flex-wrap items-center gap-10 mt-12 pt-12" style={{ borderTop: "1px solid var(--border)" }}>
             {stat(entries.length, "Total Finds")}
             <div style={{ width: 1, height: 40, background: "var(--border)" }} />
             {stat(uniqueCards, "Cards Traveling")}
             <div style={{ width: 1, height: 40, background: "var(--border)" }} />
             {stat(uniqueCountries > 0 ? `${uniqueCountries}+` : "—", "Countries")}
+            <div style={{ width: 1, height: 40, background: "var(--border)" }} />
+            {stat(kmTotal > 0 ? formatKm(kmTotal) : "—", "Total Distance")}
           </div>
         )}
       </section>

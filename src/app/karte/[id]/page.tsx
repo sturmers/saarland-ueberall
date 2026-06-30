@@ -9,7 +9,7 @@ import type { Entry } from "@/lib/supabase";
 const WorldMap = dynamic(() => import("@/components/WorldMap"), { ssr: false });
 
 type CardData = {
-  card: { id: string; created_at: string };
+  card: { id: string; card_name: string; launch_message: string; created_at: string };
   entries: Entry[];
 };
 
@@ -44,6 +44,9 @@ export default function KartePage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<CardData | null>(null);
   const [notFound, setNotFound] = useState(false);
+
+  // Derive card display name
+  const cardDisplayName = data?.card.card_name || `Card #${data?.card.id ?? ""}`;
 
   useEffect(() => {
     fetch(`/api/card/${id}`)
@@ -84,8 +87,8 @@ export default function KartePage() {
           <Link href="/" className="font-bold text-xl tracking-tight" style={{ letterSpacing: "-0.02em" }}>
             Carry<span style={{ color: "var(--accent)" }}>On</span>
           </Link>
-          <span className="text-xs font-mono px-2 py-1 rounded-md" style={{ background: "var(--cream-dark)", color: "var(--text-muted)" }}>
-            #{id}
+          <span className="text-sm font-semibold" style={{ color: "var(--text-muted)" }}>
+            {cardDisplayName}
           </span>
         </div>
       </header>
@@ -115,6 +118,20 @@ export default function KartePage() {
                 <p className="text-xs font-medium uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{s.label}</p>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Card name + launch message */}
+        {(data.card.card_name || data.card.launch_message) && (
+          <div className="mb-10 pb-10" style={{ borderBottom: "1px solid var(--border)" }}>
+            <h1 className="font-bold text-3xl mb-2" style={{ letterSpacing: "-0.03em" }}>
+              {data.card.card_name || `Card #${id}`}
+            </h1>
+            {data.card.launch_message && (
+              <p className="text-base italic" style={{ color: "var(--text-muted)" }}>
+                „{data.card.launch_message}"
+              </p>
+            )}
           </div>
         )}
 

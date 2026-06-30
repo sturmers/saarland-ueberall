@@ -47,7 +47,7 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { name, location_name, home_location, comment, lat, lng } = body;
+  const { name, location_name, home_location, comment, lat, lng, card_name, launch_message } = body;
 
   if (!name?.trim() || !location_name?.trim() || !home_location?.trim()) {
     return NextResponse.json(
@@ -56,7 +56,14 @@ export async function POST(
     );
   }
 
-  // Eintrag und Fingerprint in einer Transaktion speichern
+  // Check if this is the first entry (to save card name + launch message)
+  const { count } = await admin
+    .from("entries")
+    .select("id", { count: "exact", head: true })
+    .eq("card_id", card.id);
+
+  const isFirst = (count ?? 0) === 0;
+
   const { data, error } = await admin
     .from("entries")
     .insert({
@@ -75,7 +82,14 @@ export async function POST(
     return NextResponse.json({ error: "Eintrag konnte nicht gespeichert werden" }, { status: 500 });
   }
 
-  // Fingerprint-Zeitstempel aktualisieren (upsert = neu anlegen oder updated_at erneuern)
+  // First finder sets card name and launch message
+  if (isFirst && (card_name?.trim() || launch_message?.trim())) {
+    await admin.from("cards").update({
+      card_name: card_name?.trim() ?? "",
+      launch_message: launch_message?.trim() ?? "",
+    }).eq("id", card.id);
+  }
+
   await admin.from("submission_locks").upsert(
     { card_id: card.id, fingerprint: fp, created_at: new Date().toISOString() },
     { onConflict: "card_id,fingerprint" }

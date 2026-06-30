@@ -18,6 +18,9 @@ export default function Nav({ instagramUrl }: Props) {
           <Link href="/" className="text-sm font-medium transition-colors hover:opacity-60" style={{ color: "var(--text-muted)" }}>
             World Map
           </Link>
+          <Link href="/leaderboard" className="text-sm font-medium transition-colors hover:opacity-60" style={{ color: "var(--text-muted)" }}>
+            Leaderboard
+          </Link>
           {instagramUrl && (
             <a href={instagramUrl} target="_blank" rel="noopener noreferrer"
               className="text-sm font-medium transition-colors hover:opacity-60" style={{ color: "var(--text-muted)" }}>

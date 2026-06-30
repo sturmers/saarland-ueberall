@@ -11,7 +11,7 @@ const WorldMap = dynamic(() => import("@/components/WorldMap"), { ssr: false });
 const COMMENT_MAX = 280;
 
 type CardData = {
-  card: { id: string; created_at: string };
+  card: { id: string; card_name: string; launch_message: string; created_at: string };
   entries: Entry[];
 };
 
@@ -50,6 +50,8 @@ export default function ScanPage() {
   const [homeLocation, setHomeLocation] = useState("");
   const [foundLocation, setFoundLocation] = useState("");
   const [comment, setComment] = useState("");
+  const [cardName, setCardName] = useState("");
+  const [launchMessage, setLaunchMessage] = useState("");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
 
@@ -158,6 +160,10 @@ export default function ScanPage() {
       setError("Bitte Name und Heimatort ausfüllen.");
       return;
     }
+    if (data?.entries.length === 0 && !cardName.trim()) {
+      setError("Please give this card a name first.");
+      return;
+    }
     if (!lat || !lng || !foundLocation) {
       setError("Bitte einen Fundort aus der Liste auswählen oder GPS nutzen.");
       return;
@@ -166,7 +172,7 @@ export default function ScanPage() {
     const res = await fetch(`/api/scan/${token}/entry`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, home_location: homeLocation, location_name: foundLocation, comment, lat, lng }),
+      body: JSON.stringify({ name, home_location: homeLocation, location_name: foundLocation, comment, lat, lng, card_name: cardName, launch_message: launchMessage }),
     });
     if (!res.ok) {
       const j = await res.json();
@@ -319,8 +325,40 @@ export default function ScanPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="rounded-2xl p-6 border" style={{ background: "#fff", borderColor: "var(--border)" }}>
-            <h2 className="font-semibold mb-5" style={{ color: "var(--text)" }}>Trag dich ein</h2>
+            <h2 className="font-semibold mb-1" style={{ color: "var(--text)" }}>Add your stop</h2>
+            {data.entries.length === 0 && (
+              <p className="text-xs mb-5" style={{ color: "var(--accent)", fontWeight: 600 }}>You're the first finder — give this card its name!</p>
+            )}
             <div className="space-y-4">
+            {/* First finder: card name + launch message */}
+            {data.entries.length === 0 && (
+              <div className="rounded-xl p-4 space-y-3" style={{ background: "var(--accent-light)", border: "1.5px solid var(--accent)" }}>
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "var(--accent)" }}>Name this card</p>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: "var(--text-muted)" }}>
+                    Card name *
+                  </label>
+                  <input type="text" value={cardName} onChange={e => setCardName(e.target.value)}
+                    placeholder='e.g. "The Wanderer", "Karl", "Lucky #7"'
+                    className="w-full rounded-xl px-4 py-2.5 text-sm outline-none"
+                    style={{ border: "1.5px solid var(--border)", background: "#fff", color: "var(--text)" }}
+                    onFocus={e => (e.target.style.borderColor = "var(--accent)")}
+                    onBlur={e => (e.target.style.borderColor = "var(--border)")} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: "var(--text-muted)" }}>
+                    Launch message (optional)
+                  </label>
+                  <textarea value={launchMessage} onChange={e => setLaunchMessage(e.target.value)}
+                    placeholder="A message to everyone who finds this card…"
+                    rows={2}
+                    className="w-full rounded-xl px-4 py-2.5 text-sm outline-none resize-none"
+                    style={{ border: "1.5px solid var(--border)", background: "#fff", color: "var(--text)" }}
+                    onFocus={e => (e.target.style.borderColor = "var(--accent)")}
+                    onBlur={e => (e.target.style.borderColor = "var(--border)")} />
+                </div>
+              </div>
+            )}
               <Field label="Dein Name *" id="name" value={name} onChange={setName} placeholder="z. B. Marie Müller" />
               <Field label="Dein Heimatort *" id="home" value={homeLocation} onChange={setHomeLocation} placeholder="z. B. Saarbrücken, Deutschland" />
 
